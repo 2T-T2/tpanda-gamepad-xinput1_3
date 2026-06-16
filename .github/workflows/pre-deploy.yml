@@ -1,0 +1,105 @@
+name: Deploy For Windows
+on:
+  workflow_dispatch:
+  push:
+    tags: [ v* ]
+
+jobs:
+  # deploy 準備を行う。
+  pre-deploy:
+    name: Pre-Deploy
+    runs-on: windows-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: setup-jdk
+        uses: actions/setup-java@v3
+        with:
+          java-version: '19'
+          distribution: 'temurin'
+          cache: maven  # 依存関係をキャッシュ
+
+      - name: Set up Maven
+        uses: stCarolas/setup-maven@v4.5
+        with:
+          maven-version: 3.9.9
+
+      - name: Cache WinLibs
+        id: cache-winlibs
+        uses: actions/cache@v4
+        with:
+          path: C:\winlibs
+          key: ${{ runner.os }}-winlibs-x86_64-mcf-seh-gcc-16.1.0-mingw-w64ucrt-14.0.0-r1
+
+      - name: Download and Extract WinLibs
+        if: steps.cache-winlibs.outputs.cache-hit != 'true'
+        run: |
+          # WinLibs の公式リリースからダウンロード（GCC 16.1.0 UCRT）
+          $url = "https://github.com/brechtsanders/winlibs_mingw/releases/download/16.1.0mcf-14.0.0-ucrt-r1/winlibs-x86_64-mcf-seh-gcc-16.1.0-mingw-w64ucrt-14.0.0-r1.zip"
+          $output = "winlibs.zip"
+          
+          Write-Host "Downloading WinLibs..."
+          Invoke-WebRequest -Uri $url -OutFile $output
+          
+          Write-Host "Extracting..."
+          # C:\winlibs に展開（内部に "mingw64" フォルダが作られます）
+          Expand-Archive -Path $output -DestinationPath C:\winlibs
+          
+          Write-Host "Cleaning up ZIP..."
+          Remove-Item $output
+
+      - name: Add WinLibs to PATH
+        run: |
+          echo "C:\winlibs\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install DirectX Runtime
+        run: |
+          # xinput1_3.dll の セットアップ
+          $dxInstaller = Join-Path $env:GITHUB_WORKSPACE "tools\directx_Jun2010_redist.exe"
+          $dxExtractDir = Join-Path $env:RUNNER_TEMP "directx"
+
+          New-Item -ItemType Directory -Path $dxExtractDir -Force | Out-Null
+          
+          Start-Process `
+            -FilePath $dxInstaller `
+            -ArgumentList "/Q /T:$dxExtractDir" `
+            -Wait
+
+          Start-Process `
+            -FilePath "$dxExtractDir\DXSETUP.exe" `
+            -ArgumentList "/silent" `
+            -Wait
+
+      - name: set up deploy
+        shell: bash
+        run: mvn -B deploy -DaltDeploymentRepository=local::file:"${GITHUB_WORKSPACE}/target/deploy-repo"
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="$GITHUB_WORKSPACE/target/deploy-repo/."
+          DST="$GITHUB_WORKSPACE/work-upload/"
+          mkdir -p "$DST"
+          cp -r "$SRC" "$DST"
+
+      - name: Upload built artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-artifacts-${{ github.run_id  }}
+          path: work-upload
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy Artifacts
+    needs: pre-deploy
+    uses: ./.github/workflows/deploy.yml
+    with:
+      repository : nakigao-maven-repository
+      uploaded-id: maven-artifacts-${{ github.run_id  }}
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
