@@ -8,7 +8,7 @@ jobs:
   # deploy 準備を行う。
   pre-deploy:
     name: Pre-Deploy
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -54,26 +54,6 @@ jobs:
       - name: Add WinLibs to PATH
         run: |
           echo "C:\winlibs\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Install DirectX Runtime
-        run: |
-          # xinput1_3.dll の セットアップ         
-          $dxUrl = "https://download.microsoft.com/download/1/1/C/11C0D5A1-5D7A-4A3A-AF3A-2B5A2F4F8A29/directx_Jun2010_redist.exe"
-          $dxInstaller = "$env:RUNNER_TEMP\directx_Jun2010_redist.exe"
-          $dxExtractDir = "$env:RUNNER_TEMP\directx"
-          
-          Invoke-WebRequest -Uri $dxUrl -OutFile $dxInstaller
-          New-Item -ItemType Directory -Path $dxExtractDir -Force | Out-Null
-          
-          Start-Process `
-            -FilePath $dxInstaller `
-            -ArgumentList "/Q /T:$dxExtractDir" `
-            -Wait
-
-          Start-Process `
-            -FilePath "$dxExtractDir\DXSETUP.exe" `
-            -ArgumentList "/silent" `
-            -Wait
 
       - name: set up deploy
         shell: bash
