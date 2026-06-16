@@ -58,9 +58,9 @@ jobs:
       - name: Install DirectX Runtime
         run: |
           # xinput1_3.dll の セットアップ
-          $dxInstaller = "$GITHUB_WORKSPACE\tools\directx_Jun2010_redist.exe"
-          $dxExtractDir = "$env:RUNNER_TEMP\directx"
-          
+          $dxInstaller = Join-Path $env:GITHUB_WORKSPACE "tools\directx_Jun2010_redist.exe"
+          $dxExtractDir = Join-Path $env:RUNNER_TEMP "directx"
+
           New-Item -ItemType Directory -Path $dxExtractDir -Force | Out-Null
           
           Start-Process `
